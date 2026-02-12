@@ -1,0 +1,15 @@
+---
+description: Client Python code conventions and structure (protocol, UI, logging)
+globs: client/**/*.py
+alwaysApply: false
+---
+
+# Client (Python) Conventions
+
+- **Layout**: Code under `client/src/`: `main.py` (entrypoint/CLI), `protocol.py` (stream framing parse/serialize), `net.py` (connection, reconnect, buffering), `ui/` (plotting, controls), `logging.py` (capture to disk, formats). Prefer `pyproject.toml` for deps and install; document run as `python -m redpitaya_spi_daq_client --ip <ip> --port <port>`.
+- **Protocol**: Implement the same versioned, framed protocol as the server. Parser must resync on partial frames; support HELLO, CONFIG, DATA, STATS. Add parser tests using recorded fixture streams.
+- **Connection**: Automatic reconnect with backoff; robust handling of disconnects. Optional request of config/state from server when specified in protocol.
+- **UI**: Use **PySide6** for the application (windows, widgets, event loop) and **pyqtgraph** for the live time-domain plot. Provide pause/resume, scaling/zoom, basic stats (min/max/RMS), sample-rate display, and controls for connect and start/stop capture.
+- **Export**: Capture files = raw samples + metadata (sample rate, format, start time, ADC config). Support: CSV, NumPy `.npy`/`.npz`. See BLUEPRINT "Client: Logging + export".
+- **Dependencies**: GUI must use **PySide6** and **pyqtgraph**; list them in `pyproject.toml`. Use numpy for capture/export as needed. Prefer stdlib for core protocol; keep plotting to pyqtgraph.
+- **Style**: Clear module boundaries; type hints where helpful.

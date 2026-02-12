@@ -1,0 +1,12 @@
+---
+description: Project context and source of truth for redpitaya-spi-daq
+alwaysApply: true
+---
+
+# redpitaya-spi-daq — Project Context
+
+- **Source of truth**: `README.md` (overview, status), `BLUEPRINT.md` (end-state, architecture, protocol, milestones). Align new work with the BLUEPRINT unless explicitly changing it.
+- **Architecture**: Server (C) on Red Pitaya does SPI ADC acquisition and TCP streaming; client (Python) on a host connects, receives, plots, and optionally logs. Data flow: ADC → SPI → server buffer → TCP → client → plot/log.
+- **Repo layout (target)**: `server/src/` (main, spi/, acq/, net/, util/), `server/include/`, `server/tests/`; `client/src/` (main, protocol, net, ui, logging); root `docs/`, `examples/`. Keep code under these trees.
+- **Scope**: Red Pitaya + external SPI ADC only; local/LAN streaming. No general DAQ framework or cloud pipeline.
+- **License**: BSD-3; new files must carry the project license header.

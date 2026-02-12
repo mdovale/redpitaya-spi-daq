@@ -1,0 +1,14 @@
+---
+description: Server C code conventions and structure (Red Pitaya, SPI, TCP)
+globs: server/**/*.c, server/**/*.h
+alwaysApply: false
+---
+
+# Server (C) Conventions
+
+- **Layout**: Place code under `server/src/` by concern: `spi/` (SPI + ADC drivers), `acq/` (sampling, ring buffer), `net/` (TCP server, framing), `util/` (logging, config, endian). Public API in `server/include/`. Tests in `server/tests/`.
+- **C style**: C11 or C99; consistent bracing and naming (e.g. `snake_case` for functions/vars). Prefer fixed-width types (`uint32_t`, `int16_t`) for protocol and sample data. Document endianness where it matters.
+- **Config**: CLI flags primary (e.g. `--spidev`, `--port`, `--adc`). Support at least: SPI device path, mode/speed, listen address/port, logging level. See BLUEPRINT "Server: Configuration".
+- **Observability**: Structured logging (severity levels) to stderr/syslog. Expose runtime counters (samples acquired/streamed, buffer high-water, overruns, client events) where feasible.
+- **Protocol**: Use a versioned, framed binary protocol (magic, version, type, length, optional CRC). Message types per BLUEPRINT: HELLO, CONFIG, DATA, STATS. Keep framing and config parsing unit-testable on host.
+- **Red Pitaya**: Use Red Pitaya SPI HW API / Linux `spidev` as appropriate; reference official docs (see README) for device paths and build/cross-compile.
