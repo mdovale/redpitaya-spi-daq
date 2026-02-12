@@ -45,3 +45,6 @@ dist/
 # *.npz
 # *.npy
 # fixtures/
+
+# Other
+_rp_api_reference/

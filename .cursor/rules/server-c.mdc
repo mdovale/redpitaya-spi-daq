@@ -11,4 +11,4 @@ alwaysApply: false
 - **Config**: CLI flags primary (e.g. `--spidev`, `--port`, `--adc`). Support at least: SPI device path, mode/speed, listen address/port, logging level. See BLUEPRINT "Server: Configuration".
 - **Observability**: Structured logging (severity levels) to stderr/syslog. Expose runtime counters (samples acquired/streamed, buffer high-water, overruns, client events) where feasible.
 - **Protocol**: Use a versioned, framed binary protocol (magic, version, type, length, optional CRC). Message types per BLUEPRINT: HELLO, CONFIG, DATA, STATS. Keep framing and config parsing unit-testable on host.
-- **Red Pitaya**: Use Red Pitaya SPI HW API / Linux `spidev` as appropriate; reference official docs (see README) for device paths and build/cross-compile.
+- **Red Pitaya**: @_rp_api_reference (read-only) contains official Red Pitaya API references and examples. Use official Red Pitaya SPI HW API / Linux spidev as appropriate.
