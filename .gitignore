@@ -1,0 +1,47 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python (client)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# C / build (server)
+*.o
+*.a
+*.so
+*.out
+*.d
+.deps/
+build/
+dist/
+*.exe
+
+# Logs and temp
+*.log
+*.tmp
+*.temp
+.cache/
+
+# Capture / test artifacts (optional; uncomment if you don’t want fixtures in repo)
+# *.npz
+# *.npy
+# fixtures/
