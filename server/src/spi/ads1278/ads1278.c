@@ -293,6 +293,10 @@ static int gpio_wait_drdy_event(const ads1278_gpio_t *gpio, uint32_t timeout_ms)
         errno = ETIMEDOUT;
         return -1;
     }
+    if ((pfd.revents & POLLPRI) == 0) {
+        errno = EIO;
+        return -1;
+    }
 
     if (lseek(gpio->fd, 0, SEEK_SET) < 0) {
         return -1;
@@ -322,8 +326,11 @@ static int spi_open_and_configure(const ads1278_cfg_t *cfg)
 {
     int fd = -1;
     uint8_t mode;
+    uint8_t effective_mode = 0U;
     uint8_t bits_per_word = 8U;
+    uint8_t effective_bits_per_word = 0U;
     uint32_t max_speed_hz;
+    uint32_t effective_max_speed_hz = 0U;
 
     fd = open(cfg->spidev_path, O_RDWR | O_CLOEXEC);
     if (fd < 0) {
@@ -363,12 +370,50 @@ spi_mode_ok:
         return -1;
     }
 
+    if (ioctl(fd, SPI_IOC_RD_MODE, &effective_mode) < 0) {
+        close(fd);
+        return -1;
+    }
+    if (ioctl(fd, SPI_IOC_RD_BITS_PER_WORD, &effective_bits_per_word) < 0) {
+        close(fd);
+        return -1;
+    }
+    if (ioctl(fd, SPI_IOC_RD_MAX_SPEED_HZ, &effective_max_speed_hz) < 0) {
+        close(fd);
+        return -1;
+    }
+    if ((effective_mode & (SPI_CPHA | SPI_CPOL)) != (cfg->spi_mode & (SPI_CPHA | SPI_CPOL))) {
+        close(fd);
+        errno = EINVAL;
+        return -1;
+    }
+    if (effective_bits_per_word != bits_per_word) {
+        close(fd);
+        errno = EINVAL;
+        return -1;
+    }
+    if (effective_max_speed_hz == 0U) {
+        close(fd);
+        errno = EIO;
+        return -1;
+    }
+
+    fprintf(stderr,
+        "ads1278 spi: req(mode=%u,bpw=%u,speed=%u) eff(mode=%u,bpw=%u,speed=%u)\n",
+        (unsigned)cfg->spi_mode,
+        (unsigned)bits_per_word,
+        (unsigned)cfg->sclk_hz,
+        (unsigned)effective_mode,
+        (unsigned)effective_bits_per_word,
+        (unsigned)effective_max_speed_hz);
+
     return fd;
 }
 
 static int spi_read_24_bytes(uint8_t rx[ADS1278_TDM_FRAME_BYTES])
 {
     struct spi_ioc_transfer transfer = {0};
+    int rc;
 
     transfer.tx_buf = (uintptr_t)g_ctx.tx_zeros;
     transfer.rx_buf = (uintptr_t)rx;
@@ -376,7 +421,12 @@ static int spi_read_24_bytes(uint8_t rx[ADS1278_TDM_FRAME_BYTES])
     transfer.speed_hz = g_ctx.cfg.sclk_hz;
     transfer.bits_per_word = 8U;
 
-    if (ioctl(g_ctx.spi_fd, SPI_IOC_MESSAGE(1), &transfer) < 0) {
+    rc = ioctl(g_ctx.spi_fd, SPI_IOC_MESSAGE(1), &transfer);
+    if (rc < 0) {
+        return -1;
+    }
+    if ((uint32_t)rc != ADS1278_TDM_FRAME_BYTES) {
+        errno = EIO;
         return -1;
     }
 
