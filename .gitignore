@@ -32,6 +32,7 @@ build/
 *.d
 .deps/
 build/
+build-docker/
 dist/
 *.exe
 

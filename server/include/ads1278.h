@@ -46,13 +46,11 @@ typedef struct {
     uint8_t spi_mode;           /* default 0 */
     bool spi_no_cs;             /* true (ADS1278 has no CS pin) */
 
-    /* DRDY */
-    const char *drdy_gpiochip;  /* e.g. "gpiochip0" or "sysfs" */
-    uint32_t drdy_line;         /* line offset or sysfs gpio number */
+    /* DRDY (sysfs global GPIO number) */
+    uint32_t drdy_gpio_number;
 
-    /* SYNC (optional) */
-    const char *sync_gpiochip;
-    uint32_t sync_line;
+    /* SYNC (optional, sysfs global GPIO number) */
+    uint32_t sync_gpio_number;
     bool use_sync;              /* recommended true for deterministic startup */
     uint32_t settle_frames;     /* discard N frames after SYNC pulse */
 

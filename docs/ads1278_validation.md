@@ -40,33 +40,26 @@ cd server
 make
 ```
 
-If libgpiod is not available on target:
-
-```bash
-cd server
-make USE_LIBGPIOD=0
-```
-
-## 2) Capture 10,000 frames (libgpiod backend)
+## 2) Capture 10,000 frames (sysfs backend)
 
 ```bash
 ./ads1278_dump \
   --spidev /dev/spidev2.0 \
-  --drdy gpiochip0:12 \
-  --sync gpiochip0:13 \
+  --drdy 968 \
+  --sync 969 \
   --settle-frames 16 \
   --frames 10000 \
   --out /tmp/ads1278_10k.bin \
   --hex 4
 ```
 
-## 3) Capture 10,000 frames (sysfs fallback backend)
+## 3) Equivalent explicit sysfs form
 
 ```bash
 ./ads1278_dump \
   --spidev /dev/spidev2.0 \
-  --drdy 904 \
-  --sync 905 \
+  --drdy sysfs:968 \
+  --sync sysfs:969 \
   --settle-frames 16 \
   --frames 10000 \
   --out /tmp/ads1278_10k.bin \

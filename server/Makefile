@@ -29,18 +29,15 @@
 
 CC ?= cc
 BUILD_DIR ?= build
-USE_LIBGPIOD ?= 1
+CFLAGADD ?=
 
 CPPFLAGS ?=
 CFLAGS ?= -O2 -std=c11 -Wall -Wextra -Wpedantic
+CFLAGS += $(CFLAGADD)
 LDFLAGS ?=
 LDLIBS ?=
 
-CPPFLAGS += -Iinclude -D_POSIX_C_SOURCE=200809L -DADS1278_USE_LIBGPIOD=$(USE_LIBGPIOD)
-
-ifeq ($(USE_LIBGPIOD),1)
-LDLIBS += -lgpiod
-endif
+CPPFLAGS += -Iinclude -D_POSIX_C_SOURCE=200809L
 
 HAL_SRC := src/spi/ads1278/ads1278.c
 HAL_OBJ := $(BUILD_DIR)/$(HAL_SRC:.c=.o)
@@ -50,9 +47,16 @@ TOOL_SRC := tools/ads1278_dump.c
 TOOL_OBJ := $(BUILD_DIR)/$(TOOL_SRC:.c=.o)
 TOOL_BIN := ads1278_dump
 
-.PHONY: all clean
+SERVER_SRC := main.c
+SERVER_OBJ := $(BUILD_DIR)/$(SERVER_SRC:.c=.o)
+SERVER_BIN := server
 
-all: $(TOOL_BIN)
+.PHONY: all clean server
+
+all: $(TOOL_BIN) $(SERVER_BIN)
+
+$(SERVER_BIN): $(SERVER_OBJ) $(HAL_LIB)
+	$(CC) $(LDFLAGS) -o $@ $(SERVER_OBJ) $(HAL_LIB) $(LDLIBS)
 
 $(TOOL_BIN): $(TOOL_OBJ) $(HAL_LIB)
 	$(CC) $(LDFLAGS) -o $@ $(TOOL_OBJ) $(HAL_LIB) $(LDLIBS)
@@ -66,4 +70,4 @@ $(BUILD_DIR)/%.o: %.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -rf "$(BUILD_DIR)" "$(TOOL_BIN)"
+	rm -rf "$(BUILD_DIR)" "$(TOOL_BIN)" "$(SERVER_BIN)"

@@ -285,7 +285,7 @@ Add two GPIOs:
 - EVM /DRDY_FSYNC → RP GPIO input (falling-edge event)
 - EVM /SYNC       → RP GPIO output (pulse low/high on startup and for re-sync)
 
-Use whichever RP GPIO mechanism is most robust on your OS build (libgpiod preferred; sysfs fallback). Document the exact pin numbers/lines chosen in `docs/ads1278_wiring.md` for reproducibility.
+Use sysfs GPIO numbers for `/DRDY` and `/SYNC` in this codebase baseline. Document exact GPIO numbers used in `docs/ads1278_wiring.md` for reproducibility.
 
 ### Linux device interfaces (M0 baseline)
 
@@ -293,7 +293,7 @@ SPI:
 - Gen 2 boards use **`/dev/spidev2.0`** (not the classic `/dev/spidev1.0`).
 
 GPIO:
-- Prefer libgpiod for edge-triggered /DRDY handling without busy polling.
+- Use sysfs GPIO (`/sys/class/gpio`) for `/DRDY` edge wait and `/SYNC` output control.
 
 Red Pitaya reference:
 - SPI command docs note the Gen 2 device path difference: https://redpitaya.readthedocs.io/en/latest/appsFeatures/remoteControl/command_list/commands-spi.html
@@ -331,11 +331,9 @@ typedef struct {
     uint8_t     spi_mode;        // default 0
     bool        spi_no_cs;       // true (ADS1278 has no CS pin)
     // DRDY
-    const char *drdy_gpiochip;   // e.g. "gpiochip0"
-    uint32_t    drdy_line;       // line offset
+    uint32_t    drdy_gpio_number; // sysfs global GPIO number
     // SYNC (optional)
-    const char *sync_gpiochip;
-    uint32_t    sync_line;
+    uint32_t    sync_gpio_number;
     bool        use_sync;        // recommended true for deterministic startup
     uint32_t    settle_frames;   // discard N frames after SYNC (datasheet/empirical)
 } ads1278_cfg_t;

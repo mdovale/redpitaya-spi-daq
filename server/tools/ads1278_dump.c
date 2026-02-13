@@ -42,8 +42,7 @@
 #include <string.h>
 
 typedef struct {
-    char *chip;
-    uint32_t line;
+    uint32_t gpio_number;
     bool set;
 } gpio_endpoint_t;
 
@@ -53,13 +52,13 @@ static void usage(FILE *stream, const char *prog_name)
         "Usage: %s [options]\n"
         "\n"
         "Required:\n"
-        "  --drdy <gpiochip:line|gpio_number>   DRDY input endpoint\n"
+        "  --drdy <gpio_number>                  DRDY input GPIO number\n"
         "\n"
         "Optional:\n"
         "  --spidev <path>                      SPI device (default: %s)\n"
         "  --sclk-hz <hz>                       SPI clock (default: 1000000)\n"
         "  --spi-mode <0..3>                    SPI mode (default: 0)\n"
-        "  --sync <gpiochip:line|gpio_number>   SYNC output endpoint\n"
+        "  --sync <gpio_number>                  SYNC output GPIO number\n"
         "  --no-sync                            Disable SYNC pulse\n"
         "  --settle-frames <n>                  Discard N frames after SYNC pulse\n"
         "  --drdy-timeout-ms <ms>               DRDY wait timeout (default: %u)\n"
@@ -70,8 +69,8 @@ static void usage(FILE *stream, const char *prog_name)
         "  --help                               Show this help text\n"
         "\n"
         "Notes:\n"
-        "  - gpiochip:line uses libgpiod backend (e.g. gpiochip0:12).\n"
-        "  - gpio_number uses sysfs backend fallback (deprecated kernel API).\n",
+        "  - This build uses sysfs GPIO only.\n"
+        "  - Pass global GPIO numbers (e.g. 968, 969 from /sys/kernel/debug/gpio).\n",
         prog_name,
         ADS1278_DEFAULT_SPIDEV,
         ADS1278_DEFAULT_DRDY_TIMEOUT_MS);
@@ -112,40 +111,29 @@ static int parse_gpio_endpoint(const char *text, gpio_endpoint_t *out_endpoint)
     const char *sep = strchr(text, ':');
 
     if (sep == NULL) {
-        uint32_t line;
+        uint32_t gpio_number;
 
-        if (parse_u32(text, &line) != 0) {
+        if (parse_u32(text, &gpio_number) != 0) {
             return -1;
         }
 
-        out_endpoint->chip = strdup("sysfs");
-        if (out_endpoint->chip == NULL) {
-            return -1;
-        }
-        out_endpoint->line = line;
+        out_endpoint->gpio_number = gpio_number;
         out_endpoint->set = true;
         return 0;
     }
 
+    if (strncmp(text, "sysfs:", 6) != 0) {
+        return -1;
+    }
+
     {
-        size_t chip_len = (size_t)(sep - text);
-        char *chip = NULL;
-        uint32_t line = 0U;
+        uint32_t gpio_number = 0U;
 
-        if (chip_len == 0U || parse_u32(sep + 1, &line) != 0) {
+        if (parse_u32(sep + 1, &gpio_number) != 0) {
             return -1;
         }
 
-        chip = (char *)malloc(chip_len + 1U);
-        if (chip == NULL) {
-            return -1;
-        }
-
-        memcpy(chip, text, chip_len);
-        chip[chip_len] = '\0';
-
-        out_endpoint->chip = chip;
-        out_endpoint->line = line;
+        out_endpoint->gpio_number = gpio_number;
         out_endpoint->set = true;
         return 0;
     }
@@ -153,11 +141,7 @@ static int parse_gpio_endpoint(const char *text, gpio_endpoint_t *out_endpoint)
 
 static void free_gpio_endpoint(gpio_endpoint_t *endpoint)
 {
-    if (endpoint->chip != NULL) {
-        free(endpoint->chip);
-    }
-    endpoint->chip = NULL;
-    endpoint->line = 0U;
+    endpoint->gpio_number = 0U;
     endpoint->set = false;
 }
 
@@ -369,11 +353,9 @@ int main(int argc, char **argv)
         cfg.sclk_hz = sclk_hz;
         cfg.spi_mode = (uint8_t)spi_mode;
         cfg.spi_no_cs = true;
-        cfg.drdy_gpiochip = drdy.chip;
-        cfg.drdy_line = drdy.line;
+        cfg.drdy_gpio_number = drdy.gpio_number;
         cfg.use_sync = use_sync;
-        cfg.sync_gpiochip = use_sync ? sync.chip : NULL;
-        cfg.sync_line = use_sync ? sync.line : 0U;
+        cfg.sync_gpio_number = use_sync ? sync.gpio_number : 0U;
         cfg.settle_frames = settle_frames;
         cfg.drdy_timeout_ms = drdy_timeout_ms;
 

@@ -62,31 +62,20 @@ Record exact switch/jumper positions used during bring-up in the table below.
 
 Fill these with the exact GPIO mapping from your RP OS image.
 
-| Role | gpiochip name/path | line number | Connection |
-| --- | --- | --- | --- |
-| DRDY | `TBD` | `TBD` | EVM /DRDY_FSYNC -> RP input |
-| SYNC | `TBD` | `TBD` | RP output -> EVM /SYNC |
+| Role | sysfs GPIO number | Connection |
+| --- | --- | --- |
+| DRDY | `TBD` | EVM /DRDY_FSYNC -> RP input |
+| SYNC | `TBD` | RP output -> EVM /SYNC |
 
 ## Software examples
 
-libgpiod backend:
+sysfs backend:
 
 ```bash
 ./ads1278_dump \
   --spidev /dev/spidev2.0 \
-  --drdy gpiochip0:12 \
-  --sync gpiochip0:13 \
-  --frames 10000 \
-  --print
-```
-
-sysfs fallback backend (if libgpiod unavailable):
-
-```bash
-./ads1278_dump \
-  --spidev /dev/spidev2.0 \
-  --drdy 904 \
-  --sync 905 \
+  --drdy 968 \
+  --sync 969 \
   --frames 10000 \
   --print
 ```

@@ -83,31 +83,13 @@ void ads1278_close(void)
 #include <time.h>
 #include <unistd.h>
 
-#ifndef ADS1278_USE_LIBGPIOD
-#define ADS1278_USE_LIBGPIOD 1
-#endif
-
-#if ADS1278_USE_LIBGPIOD
-#include <gpiod.h>
-#endif
-
 #define ADS1278_SYNC_PULSE_US 10U
 #define ADS1278_OVERLONG_XFER_WARN_US 5000U
 
-typedef enum {
-    GPIO_BACKEND_GPIOD = 0,
-    GPIO_BACKEND_SYSFS = 1
-} gpio_backend_t;
-
 typedef struct {
-    gpio_backend_t backend;
     uint32_t line_number;
     int fd;
     int exported;
-#if ADS1278_USE_LIBGPIOD
-    struct gpiod_chip *chip;
-    struct gpiod_line *line;
-#endif
 } ads1278_gpio_t;
 
 typedef struct {
@@ -168,7 +150,6 @@ static int sysfs_export_gpio(uint32_t line_number, int *did_export)
         *did_export = 0;
         return 0;
     }
-
     return -1;
 }
 
@@ -207,220 +188,104 @@ static uint64_t monotonic_now_ns(void)
     return ((uint64_t)ts.tv_sec * 1000000000ULL) + (uint64_t)ts.tv_nsec;
 }
 
-static gpio_backend_t infer_backend(const char *gpiochip)
-{
-    if (gpiochip != NULL && strcmp(gpiochip, "sysfs") == 0) {
-        return GPIO_BACKEND_SYSFS;
-    }
-
-    return GPIO_BACKEND_GPIOD;
-}
-
 static void gpio_reset(ads1278_gpio_t *gpio)
 {
     memset(gpio, 0, sizeof(*gpio));
     gpio->fd = -1;
 }
 
-static int gpio_open_drdy(ads1278_gpio_t *gpio, const char *gpiochip, uint32_t line_number)
+static int gpio_open_drdy(ads1278_gpio_t *gpio, uint32_t line_number)
 {
     gpio_reset(gpio);
-    gpio->backend = infer_backend(gpiochip);
     gpio->line_number = line_number;
 
-    if (gpio->backend == GPIO_BACKEND_SYSFS) {
-        if (sysfs_export_gpio(line_number, &gpio->exported) != 0) {
-            return -1;
-        }
-
-        if (sysfs_set_gpio_attr(line_number, "direction", "in") != 0) {
-            return -1;
-        }
-
-        if (sysfs_set_gpio_attr(line_number, "edge", "falling") != 0) {
-            return -1;
-        }
-
-        gpio->fd = sysfs_open_gpio_value(line_number, O_RDONLY | O_NONBLOCK);
-        if (gpio->fd < 0) {
-            return -1;
-        }
-
-        return 0;
-    }
-
-#if ADS1278_USE_LIBGPIOD
-    if (gpiochip == NULL || gpiochip[0] == '\0') {
-        errno = EINVAL;
+    if (sysfs_export_gpio(line_number, &gpio->exported) != 0) {
         return -1;
     }
 
-    if (strncmp(gpiochip, "/dev/", 5) == 0) {
-        gpio->chip = gpiod_chip_open(gpiochip);
-    } else {
-        gpio->chip = gpiod_chip_open_by_name(gpiochip);
-    }
-    if (gpio->chip == NULL) {
+    if (sysfs_set_gpio_attr(line_number, "direction", "in") != 0) {
         return -1;
     }
 
-    gpio->line = gpiod_chip_get_line(gpio->chip, line_number);
-    if (gpio->line == NULL) {
+    if (sysfs_set_gpio_attr(line_number, "edge", "falling") != 0) {
         return -1;
     }
 
-    if (gpiod_line_request_falling_edge_events(gpio->line, "ads1278-drdy") != 0) {
+    gpio->fd = sysfs_open_gpio_value(line_number, O_RDONLY | O_NONBLOCK);
+    if (gpio->fd < 0) {
         return -1;
     }
 
     return 0;
-#else
-    (void)gpiochip;
-    errno = ENOSYS;
-    return -1;
-#endif
 }
 
-static int gpio_open_sync(ads1278_gpio_t *gpio, const char *gpiochip, uint32_t line_number)
+static int gpio_open_sync(ads1278_gpio_t *gpio, uint32_t line_number)
 {
     gpio_reset(gpio);
-    gpio->backend = infer_backend(gpiochip);
     gpio->line_number = line_number;
 
-    if (gpio->backend == GPIO_BACKEND_SYSFS) {
-        if (sysfs_export_gpio(line_number, &gpio->exported) != 0) {
-            return -1;
-        }
-
-        if (sysfs_set_gpio_attr(line_number, "direction", "out") != 0) {
-            return -1;
-        }
-
-        if (sysfs_set_gpio_attr(line_number, "value", "1") != 0) {
-            return -1;
-        }
-
-        gpio->fd = sysfs_open_gpio_value(line_number, O_RDWR);
-        if (gpio->fd < 0) {
-            return -1;
-        }
-
-        return 0;
-    }
-
-#if ADS1278_USE_LIBGPIOD
-    if (gpiochip == NULL || gpiochip[0] == '\0') {
-        errno = EINVAL;
+    if (sysfs_export_gpio(line_number, &gpio->exported) != 0) {
         return -1;
     }
 
-    if (strncmp(gpiochip, "/dev/", 5) == 0) {
-        gpio->chip = gpiod_chip_open(gpiochip);
-    } else {
-        gpio->chip = gpiod_chip_open_by_name(gpiochip);
-    }
-    if (gpio->chip == NULL) {
+    if (sysfs_set_gpio_attr(line_number, "direction", "out") != 0) {
         return -1;
     }
 
-    gpio->line = gpiod_chip_get_line(gpio->chip, line_number);
-    if (gpio->line == NULL) {
+    if (sysfs_set_gpio_attr(line_number, "value", "1") != 0) {
         return -1;
     }
 
-    if (gpiod_line_request_output(gpio->line, "ads1278-sync", 1) != 0) {
+    gpio->fd = sysfs_open_gpio_value(line_number, O_RDWR);
+    if (gpio->fd < 0) {
         return -1;
     }
 
     return 0;
-#else
-    (void)gpiochip;
-    errno = ENOSYS;
-    return -1;
-#endif
 }
 
 static int gpio_set_value(const ads1278_gpio_t *gpio, int value)
 {
-    if (gpio->backend == GPIO_BACKEND_SYSFS) {
-        const char out = (value == 0) ? '0' : '1';
+    const char out = (value == 0) ? '0' : '1';
 
-        if (gpio->fd < 0) {
-            errno = EBADF;
-            return -1;
-        }
-
-        if (lseek(gpio->fd, 0, SEEK_SET) < 0) {
-            return -1;
-        }
-
-        if (write(gpio->fd, &out, 1) != 1) {
-            if (errno == 0) {
-                errno = EIO;
-            }
-            return -1;
-        }
-
-        return 0;
-    }
-
-#if ADS1278_USE_LIBGPIOD
-    if (gpio->line == NULL) {
-        errno = EINVAL;
+    if (gpio->fd < 0) {
+        errno = EBADF;
         return -1;
     }
 
-    return (gpiod_line_set_value(gpio->line, value) == 0) ? 0 : -1;
-#else
-    errno = ENOSYS;
-    return -1;
-#endif
+    if (lseek(gpio->fd, 0, SEEK_SET) < 0) {
+        return -1;
+    }
+
+    if (write(gpio->fd, &out, 1) != 1) {
+        if (errno == 0) {
+            errno = EIO;
+        }
+        return -1;
+    }
+
+    return 0;
 }
 
 static int gpio_wait_drdy_event(const ads1278_gpio_t *gpio, uint32_t timeout_ms)
 {
-    if (gpio->backend == GPIO_BACKEND_SYSFS) {
-        char junk[8];
-        struct pollfd pfd = {0};
-        int rc;
-
-        if (gpio->fd < 0) {
-            errno = EBADF;
-            return -1;
-        }
-
-        if (lseek(gpio->fd, 0, SEEK_SET) < 0) {
-            return -1;
-        }
-        (void)read(gpio->fd, junk, sizeof(junk));
-
-        pfd.fd = gpio->fd;
-        pfd.events = POLLPRI | POLLERR;
-        rc = poll(&pfd, 1, (int)timeout_ms);
-        if (rc < 0) {
-            return -1;
-        }
-        if (rc == 0) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
-
-        if (lseek(gpio->fd, 0, SEEK_SET) < 0) {
-            return -1;
-        }
-        (void)read(gpio->fd, junk, sizeof(junk));
-        return 0;
-    }
-
-#if ADS1278_USE_LIBGPIOD
-    struct timespec timeout = {0, 0};
-    struct gpiod_line_event event = {0};
+    char junk[8];
+    struct pollfd pfd = {0};
     int rc;
 
-    timeout.tv_sec = timeout_ms / 1000U;
-    timeout.tv_nsec = (long)((timeout_ms % 1000U) * 1000000UL);
+    if (gpio->fd < 0) {
+        errno = EBADF;
+        return -1;
+    }
 
-    rc = gpiod_line_event_wait(gpio->line, &timeout);
+    if (lseek(gpio->fd, 0, SEEK_SET) < 0) {
+        return -1;
+    }
+    (void)read(gpio->fd, junk, sizeof(junk));
+
+    pfd.fd = gpio->fd;
+    pfd.events = POLLPRI | POLLERR;
+    rc = poll(&pfd, 1, (int)timeout_ms);
     if (rc < 0) {
         return -1;
     }
@@ -429,16 +294,12 @@ static int gpio_wait_drdy_event(const ads1278_gpio_t *gpio, uint32_t timeout_ms)
         return -1;
     }
 
-    if (gpiod_line_event_read(gpio->line, &event) != 0) {
+    if (lseek(gpio->fd, 0, SEEK_SET) < 0) {
         return -1;
     }
+    (void)read(gpio->fd, junk, sizeof(junk));
 
     return 0;
-#else
-    (void)timeout_ms;
-    errno = ENOSYS;
-    return -1;
-#endif
 }
 
 static void gpio_close(ads1278_gpio_t *gpio)
@@ -447,28 +308,12 @@ static void gpio_close(ads1278_gpio_t *gpio)
         return;
     }
 
-    if (gpio->backend == GPIO_BACKEND_SYSFS) {
-        if (gpio->fd >= 0) {
-            close(gpio->fd);
-        }
-        if (gpio->exported) {
-            (void)sysfs_unexport_gpio(gpio->line_number);
-        }
-        gpio_reset(gpio);
-        return;
+    if (gpio->fd >= 0) {
+        close(gpio->fd);
     }
-
-#if ADS1278_USE_LIBGPIOD
-    if (gpio->line != NULL) {
-        gpiod_line_release(gpio->line);
-        gpio->line = NULL;
+    if (gpio->exported) {
+        (void)sysfs_unexport_gpio(gpio->line_number);
     }
-
-    if (gpio->chip != NULL) {
-        gpiod_chip_close(gpio->chip);
-        gpio->chip = NULL;
-    }
-#endif
 
     gpio_reset(gpio);
 }
@@ -493,10 +338,20 @@ static int spi_open_and_configure(const ads1278_cfg_t *cfg)
 #endif
 
     if (ioctl(fd, SPI_IOC_WR_MODE, &mode) < 0) {
+        /* Some kernels/drivers reject SPI_NO_CS with EINVAL even when defined. */
+#ifdef SPI_NO_CS
+        if (cfg->spi_no_cs && errno == EINVAL) {
+            mode = cfg->spi_mode;
+            if (ioctl(fd, SPI_IOC_WR_MODE, &mode) == 0) {
+                goto spi_mode_ok;
+            }
+        }
+#endif
         close(fd);
         return -1;
     }
 
+spi_mode_ok:
     if (ioctl(fd, SPI_IOC_WR_BITS_PER_WORD, &bits_per_word) < 0) {
         close(fd);
         return -1;
@@ -570,15 +425,6 @@ int ads1278_open(const ads1278_cfg_t *cfg)
     if (effective_cfg.drdy_timeout_ms == 0U) {
         effective_cfg.drdy_timeout_ms = ADS1278_DEFAULT_DRDY_TIMEOUT_MS;
     }
-    if (effective_cfg.drdy_gpiochip == NULL || effective_cfg.drdy_gpiochip[0] == '\0') {
-        errno = EINVAL;
-        return -1;
-    }
-    if (effective_cfg.use_sync &&
-        (effective_cfg.sync_gpiochip == NULL || effective_cfg.sync_gpiochip[0] == '\0')) {
-        errno = EINVAL;
-        return -1;
-    }
 
     memset(&g_ctx, 0, sizeof(g_ctx));
     g_ctx.spi_fd = -1;
@@ -592,13 +438,13 @@ int ads1278_open(const ads1278_cfg_t *cfg)
         return -1;
     }
 
-    if (gpio_open_drdy(&g_ctx.drdy_gpio, g_ctx.cfg.drdy_gpiochip, g_ctx.cfg.drdy_line) != 0) {
+    if (gpio_open_drdy(&g_ctx.drdy_gpio, g_ctx.cfg.drdy_gpio_number) != 0) {
         ads1278_close();
         return -1;
     }
 
     if (g_ctx.cfg.use_sync &&
-        gpio_open_sync(&g_ctx.sync_gpio, g_ctx.cfg.sync_gpiochip, g_ctx.cfg.sync_line) != 0) {
+        gpio_open_sync(&g_ctx.sync_gpio, g_ctx.cfg.sync_gpio_number) != 0) {
         ads1278_close();
         return -1;
     }
