@@ -205,7 +205,157 @@ Define and document a **versioned** stream protocol in `docs/protocol.md`.
 
 ## Milestones (suggested)
 
+- **M0**: ADS1278 SPI bring-up in ARM userspace
 - **M1**: Minimal server streams dummy ramp + client plots it (protocol + UI skeleton).
 - **M2**: Real SPI reads for one ADC model + stable streaming to client.
 - **M3**: Logging/export + robust reconnect + stats/health reporting.
 - **M4**: Multiple formats / optional triggered capture + documentation polish.
+
+## ADS1278 hardware layer
+
+This project’s first external ADC target is the **TI ADS1278** (8-channel, 24-bit, simultaneous-sampling ΔΣ ADC) connected to the Red Pitaya via:
+
+- **E2 SPI** for the serial data stream (DOUT1 → MISO, SCLK → SCLK)
+- **GPIO** lines for **/DRDY** (data-ready) and **/SYNC** (synchronization / reset of the digital filter pipeline)
+
+The goal of this “hardware layer” (HAL) is to turn “GPIO edges + SPI bytes” into **validated 8-channel sample frames** so that higher layers (buffering, networking, client plotting) remain independent of wiring, timing edges, and Linux device details.
+
+### Key ADS1278 behaviors that shape the HAL
+
+- **Simultaneous sampling**: all eight channels convert in parallel and are internally synchronized (no inter-channel sample skew from “round-robin” multiplexing).
+- **SPI is read-only**: there is no register map to configure over SPI; the ADS1278 is configured using hardware pins (MODE, FORMAT, CLKDIV, PWDN…).
+- **Framing is DRDY-driven**: /DRDY indicates when a coherent conversion frame is available; readout must be aligned to /DRDY to avoid mixing bits from different conversions.
+- **24-bit two’s complement samples**: each channel is a signed 24-bit word; software must sign-extend to 32-bit.
+- **TDM output is the practical ARM-only path**: in TDM mode, all channels are serialized on DOUT1 in a fixed order, producing a single frame per /DRDY. TDM (Time-Division Multiplexing) is a scheme where multiple channels share one data line by transmitting their samples sequentially in fixed time slots (e.g., CH1, then CH2, …, then repeat).
+
+Primary references:
+- ADS1278 product/datasheet landing: https://www.ti.com/product/ADS1278
+- ADS1278 datasheet PDF (EP version): https://www.ti.com/lit/gpn/ADS1278-EP
+- ADS1278EVM user guide: https://www.ti.com/lit/pdf/sbau436
+
+### Recommended data format for ARM-only bring-up (M0)
+
+Use **SPI + TDM + Fixed-position** output format so the ARM can read all 8 channels over a single MISO line in a deterministic layout:
+
+- Frame size: 8 channels × 24 bits = **192 bits = 24 bytes**
+- Channel order in TDM: **CH1, CH2, …, CH8** on DOUT1 (then repeats each conversion)
+
+This keeps parsing stable even if you later power down channels (fixed-position formats keep slots consistent).
+
+### Clock-rate strategy (critical for “few Hz” use, and for Linux feasibility)
+
+The ADS1278 output data rate scales with its master clock frequency (down to a stated minimum), and TI notes that selecting a slower external clock does **not** change conversion resolution; it reduces throughput and can reduce external clock-buffer power.
+
+Practical strategy:
+1. Start with the EVM’s default clock configuration to reduce variables.
+2. If /DRDY is too fast for reliable userspace servicing, switch the EVM to an external clock and **reduce fCLK** until the ARM can service every /DRDY edge comfortably.
+
+### Physical wiring (Red Pitaya ↔ ADS1278EVM)
+
+#### ADS1278EVM: external controller header (J6)
+
+The ADS1278EVM user guide supports connecting an external controller via J6 and recommends:
+- Tie **DIN** low if not daisy-chaining (do not leave DIN floating)
+- Connect controller I/O to **/SYNC**
+- Connect controller input to **/DRDY_FSYNC**
+- Use **DOUT1** for TDM output
+
+#### Red Pitaya PRO Gen 2: E2 SPI pins
+
+On the STEMlab 125-14 PRO Gen 2 E2 connector:
+- Pin 3: SPI (MOSI)  — PS_MIO10 — 3.3V
+- Pin 4: SPI (MISO)  — PS_MIO11 — 3.3V
+- Pin 5: SPI (SCK)   — PS_MIO12 — 3.3V
+- Pin 6: SPI (CS)    — PS_MIO13 — 3.3V
+
+Wire for TDM readout:
+- E2 SCK  → EVM SCLK
+- E2 MISO ← EVM DOUT1 (TDM stream)
+
+DIN handling (choose one):
+- Preferred (matches EVM guidance): strap **DIN to GND** on the EVM and leave MOSI unconnected.
+- Acceptable alternative: connect MOSI→DIN and always transmit 0x00 so DIN is never floating.
+
+CS handling:
+- ADS1278 SPI readout does not require a chip-select pin. Leave E2 CS unconnected and configure the SPI driver accordingly (or tolerate toggling on an unconnected line).
+
+#### /DRDY and /SYNC
+
+Add two GPIOs:
+- EVM /DRDY_FSYNC → RP GPIO input (falling-edge event)
+- EVM /SYNC       → RP GPIO output (pulse low/high on startup and for re-sync)
+
+Use whichever RP GPIO mechanism is most robust on your OS build (libgpiod preferred; sysfs fallback). Document the exact pin numbers/lines chosen in `docs/ads1278_wiring.md` for reproducibility.
+
+### Linux device interfaces (M0 baseline)
+
+SPI:
+- Gen 2 boards use **`/dev/spidev2.0`** (not the classic `/dev/spidev1.0`).
+
+GPIO:
+- Prefer libgpiod for edge-triggered /DRDY handling without busy polling.
+
+Red Pitaya reference:
+- SPI command docs note the Gen 2 device path difference: https://redpitaya.readthedocs.io/en/latest/appsFeatures/remoteControl/command_list/commands-spi.html
+
+### HAL responsibilities
+
+The ADS1278 HAL must:
+
+1. Open and configure SPI (mode, speed, bits-per-word)
+2. Configure GPIO:
+   - /DRDY as input with falling-edge events
+   - /SYNC as output (optional but recommended)
+3. Optional: pulse /SYNC after power-up for deterministic alignment
+4. For each conversion:
+   - wait for /DRDY falling edge
+   - perform exactly one SPI transfer of **24 bytes**
+   - parse into 8 × signed 32-bit values (sign-extended from 24-bit)
+5. Report/track:
+   - timeouts (no /DRDY)
+   - overruns (transfer too slow vs conversion period)
+   - basic framing sanity checks (optional raw hex dump)
+
+This HAL must *not* attempt to configure ADS1278 operating modes via SPI (no register map). Mode changes are done via EVM straps/jumpers and/or external clock selection.
+
+### Proposed HAL API (C)
+
+Location suggestion:
+- `server/src/spi/ads1278/ads1278.c`
+- `server/include/ads1278.h`
+
+```c
+typedef struct {
+    const char *spidev_path;     // e.g. "/dev/spidev2.0"
+    uint32_t    sclk_hz;         // SPI clock rate
+    uint8_t     spi_mode;        // default 0
+    bool        spi_no_cs;       // true (ADS1278 has no CS pin)
+    // DRDY
+    const char *drdy_gpiochip;   // e.g. "gpiochip0"
+    uint32_t    drdy_line;       // line offset
+    // SYNC (optional)
+    const char *sync_gpiochip;
+    uint32_t    sync_line;
+    bool        use_sync;        // recommended true for deterministic startup
+    uint32_t    settle_frames;   // discard N frames after SYNC (datasheet/empirical)
+} ads1278_cfg_t;
+
+typedef struct {
+    uint64_t seq;
+    uint64_t tstamp_ns;          // CLOCK_MONOTONIC(_RAW) timestamp
+    int32_t  ch[8];              // sign-extended 24-bit samples
+} ads1278_frame_t;
+
+int  ads1278_open(const ads1278_cfg_t *cfg);
+int  ads1278_start(void);
+int  ads1278_read_frame(ads1278_frame_t *out);  // blocks until DRDY then reads SPI
+void ads1278_stop(void);
+void ads1278_close(void);
+```
+
+### Integration points
+
+- `spi/ads1278` produces `ads1278_frame_t`
+- `acq/` owns buffering + decimation/averaging for low-frequency use
+- `net/` owns protocol serialization
+- `client/` remains unchanged once it can plot frames

@@ -29,8 +29,9 @@ SPI is a common four-wire synchronous protocol (SCLK, MOSI, MISO, CS) used for h
 ## References
 
 - [Red Pitaya API scripts (remote control)](https://redpitaya.readthedocs.io/en/latest/appsFeatures/remoteControl/API_scripts.html)
-- [Red Pitaya SPI HW API example](https://redpitaya.readthedocs.io/en/latest/appsFeatures/examples/communication_interfaces/dig_com-6-spi_hw_api.html)
-- [Red Pitaya Zynq SPI notes (rfblocks.org)](https://rfblocks.org/articles/RedPitaya-zynq-spi.html)
+- [Red Pitaya SPI Reference](https://redpitaya.readthedocs.io/en/latest/appsFeatures/remoteControl/command_list/commands-spi.html)
 - [Red Pitaya C API reference](https://github.com/RedPitaya/RedPitaya/tree/master/rp-api)
 - [Red Pitaya C API rp.h](https://github.com/RedPitaya/RedPitaya/blob/master/rp-api/api/include/rp.h)
 - [Red Pitaya C API rp_hw.h](https://github.com/RedPitaya/RedPitaya/blob/master/rp-api/api-hw/include/rp_hw.h)
+- [Red Pitaya SPI HW API example](https://redpitaya.readthedocs.io/en/latest/appsFeatures/examples/communication_interfaces/dig_com-6-spi_hw_api.html)
+- [Red Pitaya Zynq SPI notes (rfblocks.org)](https://rfblocks.org/articles/RedPitaya-zynq-spi.html)
